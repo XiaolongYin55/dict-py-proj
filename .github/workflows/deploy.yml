@@ -16,21 +16,35 @@ jobs:
         git pull origin main
         echo "✅ 代码更新完成"
         
-    - name: Rebuild Services
+    - name: Stop Services
       run: |
         cd /home/parallels/myDict
         docker-compose down
-        docker-compose build --no-cache
+        echo "✅ 服务已停止"
+        
+    - name: Rebuild Web Service Only
+      run: |
+        cd /home/parallels/myDict
+        docker-compose build --no-cache web
+        echo "✅ Web服务构建完成"
+        
+    - name: Start Database
+      run: |
+        cd /home/parallels/myDict
         docker-compose up -d db
         echo "⏳ 等待数据库启动..."
-        sleep 30
+        sleep 45
+        
+    - name: Start Web Service
+      run: |
+        cd /home/parallels/myDict
         docker-compose up -d web
-        echo "✅ 服务重建完成"
+        echo "✅ 所有服务启动完成"
         
     - name: Run Migrations
       run: |
         cd /home/parallels/myDict
-        # 使用 -T 参数禁用 TTY
+        sleep 10
         docker-compose exec -T web python manage.py migrate
         echo "✅ 数据库迁移完成"
         
