@@ -30,7 +30,8 @@ jobs:
     - name: Run Migrations
       run: |
         cd /home/parallels/myDict
-        docker-compose exec web python manage.py migrate
+        # 使用 -T 参数禁用 TTY
+        docker-compose exec -T web python manage.py migrate
         echo "✅ 数据库迁移完成"
         
     - name: Check Status
