@@ -29,25 +29,25 @@ jobs:
         docker-compose build --no-cache
         echo "✅ 服务重建完成"
         
-    - name: Start Database with Health Check
+    - name: Start Database with Health Check (30秒)
       run: |
         cd /home/parallels/myDict
         docker-compose up -d db
-        echo "⏳ 等待数据库完全启动..."
+        echo "⏳ 等待数据库完全启动（最多30秒）..."
         
-        # 健康检查，等待数据库真正就绪
-        for i in {1..12}; do
-          if docker-compose exec db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
-            echo "✅ 数据库已就绪 (尝试 $i/12)"
+        # 健康检查，30秒超时（6次×5秒）
+        for i in {1..6}; do
+          if docker-compose exec -T db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
+            echo "✅ 数据库已就绪 (尝试 $i/6)"
             break
           else
-            echo "⏱️  等待数据库... (尝试 $i/12)"
-            sleep 10
+            echo "⏱️  等待数据库... (尝试 $i/6)"
+            sleep 5
           fi
         done
         
         # 最终验证
-        docker-compose exec db mysql -uroot -p12345678 -e "SHOW DATABASES;" || echo "❌ 数据库启动失败"
+        docker-compose exec -T db mysql -uroot -p12345678 -e "SHOW DATABASES;" && echo "✅ 数据库验证成功" || echo "⚠️ 数据库可能未完全就绪"
         echo "✅ 数据库启动完成"
         
     - name: Start Web Service
@@ -56,18 +56,18 @@ jobs:
         docker-compose up -d web
         echo "✅ Web服务启动完成"
         
-    - name: Wait for Django
+    - name: Wait for Django (20秒)
       run: |
         cd /home/parallels/myDict
-        echo "⏳ 等待Django应用启动..."
+        echo "⏳ 等待Django应用启动（最多20秒）..."
         
-        # 等待Django健康
-        for i in {1..10}; do
+        # 等待Django健康，20秒超时（4次×5秒）
+        for i in {1..4}; do
           if curl -f http://localhost:8000/api/users/ &>/dev/null; then
-            echo "✅ Django应用已就绪 (尝试 $i/10)"
+            echo "✅ Django应用已就绪 (尝试 $i/4)"
             break
           else
-            echo "⏱️  等待Django... (尝试 $i/10)"
+            echo "⏱️  等待Django... (尝试 $i/4)"
             sleep 5
           fi
         done
