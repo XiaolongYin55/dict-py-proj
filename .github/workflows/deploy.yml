@@ -22,35 +22,67 @@ jobs:
         docker-compose down
         echo "✅ 服务已停止"
         
-    - name: Rebuild Web Service Only
+    - name: Rebuild Services
       run: |
         cd /home/parallels/myDict
-        docker-compose build --no-cache web
-        echo "✅ Web服务构建完成"
+        docker system prune -f
+        docker-compose build --no-cache
+        echo "✅ 服务重建完成"
         
-    - name: Start Database
+    - name: Start Database with Health Check
       run: |
         cd /home/parallels/myDict
         docker-compose up -d db
-        echo "⏳ 等待数据库启动..."
-        sleep 45
+        echo "⏳ 等待数据库完全启动..."
+        
+        # 健康检查，等待数据库真正就绪
+        for i in {1..12}; do
+          if docker-compose exec db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
+            echo "✅ 数据库已就绪 (尝试 $i/12)"
+            break
+          else
+            echo "⏱️  等待数据库... (尝试 $i/12)"
+            sleep 10
+          fi
+        done
+        
+        # 最终验证
+        docker-compose exec db mysql -uroot -p12345678 -e "SHOW DATABASES;" || echo "❌ 数据库启动失败"
+        echo "✅ 数据库启动完成"
         
     - name: Start Web Service
       run: |
         cd /home/parallels/myDict
         docker-compose up -d web
-        echo "✅ 所有服务启动完成"
+        echo "✅ Web服务启动完成"
+        
+    - name: Wait for Django
+      run: |
+        cd /home/parallels/myDict
+        echo "⏳ 等待Django应用启动..."
+        
+        # 等待Django健康
+        for i in {1..10}; do
+          if curl -f http://localhost:8000/api/users/ &>/dev/null; then
+            echo "✅ Django应用已就绪 (尝试 $i/10)"
+            break
+          else
+            echo "⏱️  等待Django... (尝试 $i/10)"
+            sleep 5
+          fi
+        done
+        echo "✅ 应用健康检查完成"
         
     - name: Run Migrations
       run: |
         cd /home/parallels/myDict
-        sleep 10
         docker-compose exec -T web python manage.py migrate
         echo "✅ 数据库迁移完成"
         
-    - name: Check Status
+    - name: Final Check
       run: |
         cd /home/parallels/myDict
         docker-compose ps
+        curl -s http://localhost:8000/api/users/ | head -2
         echo "🎉 部署完成!"
         echo "🌐 访问地址: http://10.211.55.9:8000"
