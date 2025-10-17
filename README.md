@@ -15,6 +15,7 @@ Successfully installed PyMySQL-1.1.2
 
 [notice] A new release of pip is available: 24.2 -> 25.2
 [notice] To update, run: pip install --upgrade pip
+This is a test commit to verify CI/CD pipeline is working correctly.
 ```
 
 ## Create a new file
