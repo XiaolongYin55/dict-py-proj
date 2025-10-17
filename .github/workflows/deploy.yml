@@ -6,11 +6,14 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted  # 使用自托管 Runner
+    runs-on: self-hosted
     steps:
     - name: Pull Latest Code
       run: |
         cd /home/parallels/myDict
+        # 备份并重置任何本地修改
+        git stash
+        git reset --hard HEAD
         git pull origin main
         
     - name: Rebuild Services
