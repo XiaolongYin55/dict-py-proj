@@ -8,9 +8,17 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
+    - name: Stop Services First
+      run: |
+        cd /home/laurence/myDict
+        echo "⏹️  先停止所有服务避免冲突..."
+        docker compose stop web 2>/dev/null || true
+        docker compose down 2>/dev/null || true
+        echo "✅ 服务已停止"
+        
     - name: Pull Latest Code
       run: |
-        cd /home/parallels/myDict
+        cd /home/laurence/myDict
         git stash
         git reset --hard HEAD
         git pull origin main
@@ -18,78 +26,80 @@ jobs:
         
     - name: Clean Environment
       run: |
-        cd /home/parallels/myDict
-        docker-compose down --volumes --remove-orphans 2>/dev/null || true
+        cd /home/laurence/myDict
+        docker compose down --volumes --remove-orphans 2>/dev/null || true
         docker system prune -f
         echo "✅ 环境清理完成"
         
     - name: Rebuild Services
       run: |
-        cd /home/parallels/myDict
-        docker-compose build --no-cache
+        cd /home/laurence/myDict
+        docker compose build --no-cache
         echo "✅ 服务重建完成"
         
-    - name: Start Database with Long Wait
+    - name: Start Database with Wait
       run: |
-        cd /home/parallels/myDict
-        docker-compose up -d db
-        echo "⏳ 等待数据库完全启动（90秒）..."
-        sleep 90
+        cd /home/laurence/myDict
+        docker compose up -d db
+        echo "⏳ 等待数据库完全启动（60秒）..."
+        sleep 60
         echo "✅ 数据库启动完成"
         
     - name: Verify Database Connection
       run: |
-        cd /home/parallels/myDict
+        cd /home/laurence/myDict
         echo "🔍 验证数据库连接..."
-        if docker-compose exec -T db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
+        if docker compose exec -T db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
           echo "✅ 数据库连接正常"
         else
           echo "❌ 数据库连接失败，查看日志:"
-          docker-compose logs db
+          docker compose logs db
           exit 1
         fi
         
     - name: Run Database Migrations
       run: |
-        cd /home/parallels/myDict
+        cd /home/laurence/myDict
         echo "🔧 运行数据库迁移..."
-        docker-compose run --rm web python manage.py migrate
+        docker compose run --rm web python manage.py migrate
         echo "✅ 迁移完成"
         
     - name: Start Web Service
       run: |
-        cd /home/parallels/myDict
-        docker-compose up -d web
+        cd /home/laurence/myDict
+        docker compose up -d web
         echo "✅ Web服务启动完成"
         
     - name: Wait for Application
       run: |
-        cd /home/parallels/myDict
-        echo "⏳ 等待应用启动（45秒）..."
-        sleep 45
+        cd /home/laurence/myDict
+        echo "⏳ 等待应用启动（30秒）..."
+        sleep 30
         
     - name: Final Health Check
       run: |
-        cd /home/parallels/myDict
+        cd /home/laurence/myDict
         echo "🔍 最终健康检查..."
         
         # 检查服务状态
-        docker-compose ps
-        
-        # 查看Web容器日志
-        echo "📋 Web容器日志:"
-        docker-compose logs web --tail=10
+        docker compose ps
         
         # 健康检查
-        timeout=30
         for i in $(seq 1 6); do
           if curl -f http://localhost:8000/api/users/ &>/dev/null; then
             echo "✅ 应用健康检查通过"
+            echo "🎉 自动化部署成功!"
+            echo "🌐 访问地址: http://192.168.181.129:8000"
             break
+          else
+            echo "⏱️  等待应用启动... ($i/6)"
+            sleep 5
           fi
-          echo "⏱️  等待应用启动... ($i/6)"
-          sleep 5
         done
         
-        echo "🎉 部署流程完成!"
-        echo "🌐 访问地址: http://10.211.55.9:8000"
+        # 如果健康检查失败，显示日志
+        if ! curl -f http://localhost:8000/api/users/ &>/dev/null; then
+          echo "❌ 健康检查失败，查看详细日志:"
+          docker compose logs web
+          exit 1
+        fi
