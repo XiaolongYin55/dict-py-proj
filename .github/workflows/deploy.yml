@@ -16,7 +16,7 @@ jobs:
     - name: Stop services safely
       run: |
         echo "🛑 安全停止服务..."
-        cd /home/laurence/dict-py-proj  # 修正路径
+        cd /home/laurence/dict-py-proj
         docker-compose down --remove-orphans || true
         echo "✅ 服务已停止（保留数据卷）"
         
@@ -29,13 +29,13 @@ jobs:
     - name: Build with cache
       run: |
         echo "🔨 构建镜像（使用缓存）..."
-        cd /home/laurence/dict-py-proj  # 修正路径
+        cd /home/laurence/dict-py-proj
         docker-compose build
         
     - name: Start database first
       run: |
         echo "🗄️ 先启动数据库..."
-        cd /home/laurence/dict-py-proj  # 修正路径
+        cd /home/laurence/dict-py-proj
         docker-compose up -d db
         
         echo "⏳ 等待数据库就绪..."
@@ -51,13 +51,13 @@ jobs:
     - name: Start web service
       run: |
         echo "🌐 启动Web服务..."
-        cd /home/laurence/dict-py-proj  # 修正路径
+        cd /home/laurence/dict-py-proj
         docker-compose up -d web
         
     - name: Verify deployment
       run: |
         echo "🔍 验证部署..."
-        cd /home/laurence/dict-py-proj  # 修正路径
+        cd /home/laurence/dict-py-proj
         sleep 10
         docker-compose ps
         docker-compose logs web --tail=20
@@ -65,7 +65,7 @@ jobs:
     - name: Health check
       run: |
         echo "❤️ 健康检查..."
-        cd /home/laurence/dict-py-proj  # 修正路径
+        cd /home/laurence/dict-py-proj
         if curl -f http://localhost:8000/admin/ &>/dev/null; then
           echo "✅ 健康检查通过"
         else
@@ -77,7 +77,7 @@ jobs:
       if: failure()
       run: |
         echo "❌ 部署失败，保留环境用于排查..."
-        cd /home/laurence/dict-py-proj  # 修正路径
-        docker-compose logs > /home/laurence/deploy_failure_$(date +%Y%m%d_%H%M%S).log
-        docker system df >> /home/laurence/deploy_failure_$(date +%Y%m%d_%H%M%S).log
-        echo "📄 失败日志已保存，环境保持原状"
+        cd /home/laurence/dict-py-proj
+        docker-compose logs > /home/laurence/deploy_failure_$(date +%Y%m%d_%H%M%S).log || echo "日志保存失败但继续"
+        docker system df >> /home/laurence/deploy_failure_$(date +%Y%m%d_%H%M%S).log || echo "系统信息保存失败但继续"
+        echo "📄 失败处理完成"
