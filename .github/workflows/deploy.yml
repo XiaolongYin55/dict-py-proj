@@ -1,4 +1,4 @@
-name: Safe Auto Deploy
+name: Safe Auto Deploy - Preserve Data
 
 on:
   push:
@@ -10,60 +10,73 @@ jobs:
     timeout-minutes: 30
     
     steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
     - name: Force Sync Latest Code
       run: |
         echo "📥 强制同步最新代码..."
         cd /home/laurence/dict-py-proj
         
-        # 强制同步，确保代码完全更新
         git fetch --all
         git reset --hard origin/main
         git clean -fd -q
         echo "✅ 代码同步完成"
-        
-    - name: Stop Services Safely
+    
+    - name: Stop Web Service Only (Keep DB)
       run: |
-        echo "🛑 安全停止服务..."
+        echo "🛑 安全停止Web服务..."
         cd /home/laurence/dict-py-proj
-        docker-compose down --remove-orphans || true
-        echo "✅ 服务已停止"
         
-    - name: Clean Docker Cache
+        # 只停止web，不停止db，保留卷
+        docker-compose stop web || true
+        docker-compose rm -f web || true
+        
+        echo "✅ Web服务已停止，数据库保持运行"
+    
+    - name: Clean Docker Cache (Safe)
       run: |
         echo "🧹 清理Docker缓存..."
-        docker image prune -f
         
-    - name: Build Services
+        docker image prune -f --filter "until=72h" || true
+        
+        echo "✅ Docker缓存已清理"
+    
+    - name: Build Web Service Only
       run: |
-        echo "🔨 构建服务..."
+        echo "🔨 构建Web服务..."
         cd /home/laurence/dict-py-proj
-        docker-compose build
-        
-    - name: Start Database
-      run: |
-        echo "🗄️ 启动数据库..."
-        cd /home/laurence/dict-py-proj
-        docker-compose up -d db
-        
-        echo "⏳ 等待数据库就绪..."
-        for i in {1..30}; do
-          if docker-compose exec db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
-            echo "✅ 数据库已就绪"
-            break
-          fi
-          sleep 2
-        done
-        
+        docker-compose build web
+    
     - name: Start Web Service
       run: |
         echo "🌐 启动Web服务..."
         cd /home/laurence/dict-py-proj
         docker-compose up -d web
         
+        echo "⏳ 等待Web服务就绪..."
+        for i in {1..30}; do
+          if docker-compose exec -T web python manage.py migrate &>/dev/null; then
+            echo "✅ 数据库迁移完成"
+            break
+          fi
+          echo "  等待中... ($i/30)"
+          sleep 2
+        done
+    
     - name: Verify Deployment
       run: |
         echo "🔍 验证部署..."
         cd /home/laurence/dict-py-proj
-        sleep 10
+        sleep 5
         docker-compose ps
-        echo "🎉 CI/CD部署成功完成!"
+        echo "🎉 CI/CD部署成功完成！"
+    
+    - name: Show Database Status
+      run: |
+        echo "📊 数据库状态："
+        cd /home/laurence/dict-py-proj
+        docker volume ls | grep mydict
+        docker-compose exec -T db mysql -uroot -p12345678 -e "SHOW DATABASES;"
