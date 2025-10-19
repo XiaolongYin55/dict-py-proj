@@ -59,8 +59,6 @@ services:
 volumes:
   mydict_db_data:
     driver: local
-    driver_opts:
-      type: local
 
 networks:
   dict-network:
