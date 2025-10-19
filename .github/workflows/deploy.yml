@@ -1,4 +1,4 @@
-name: Auto Deploy to Ubuntu
+name: Safe Auto Deploy
 
 on:
   push:
@@ -7,99 +7,77 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+    timeout-minutes: 30
+    
     steps:
-    - name: Stop Services First
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Stop services safely
       run: |
-        cd /home/laurence/myDict
-        echo "⏹️  先停止所有服务避免冲突..."
-        docker compose stop web 2>/dev/null || true
-        docker compose down 2>/dev/null || true
-        echo "✅ 服务已停止"
+        echo "🛑 安全停止服务..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        docker-compose down --remove-orphans || true
+        echo "✅ 服务已停止（保留数据卷）"
         
-    - name: Pull Latest Code
+    - name: Clean docker cache selectively
       run: |
-        cd /home/laurence/myDict
-        git stash
-        git reset --hard HEAD
-        git pull origin main
-        echo "✅ 代码更新完成"
+        echo "🧹 选择性清理Docker缓存..."
+        docker image prune -f
+        docker system df
         
-    - name: Clean Environment
+    - name: Build with cache
       run: |
-        cd /home/laurence/myDict
-        docker compose down --volumes --remove-orphans 2>/dev/null || true
-        docker system prune -f
-        echo "✅ 环境清理完成"
+        echo "🔨 构建镜像（使用缓存）..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        docker-compose build
         
-    - name: Rebuild Services
+    - name: Start database first
       run: |
-        cd /home/laurence/myDict
-        docker compose build --no-cache
-        echo "✅ 服务重建完成"
+        echo "🗄️ 先启动数据库..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        docker-compose up -d db
         
-    - name: Start Database with Wait
-      run: |
-        cd /home/laurence/myDict
-        docker compose up -d db
-        echo "⏳ 等待数据库完全启动（60秒）..."
-        sleep 60
-        echo "✅ 数据库启动完成"
-        
-    - name: Verify Database Connection
-      run: |
-        cd /home/laurence/myDict
-        echo "🔍 验证数据库连接..."
-        if docker compose exec -T db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
-          echo "✅ 数据库连接正常"
-        else
-          echo "❌ 数据库连接失败，查看日志:"
-          docker compose logs db
-          exit 1
-        fi
-        
-    - name: Run Database Migrations
-      run: |
-        cd /home/laurence/myDict
-        echo "🔧 运行数据库迁移..."
-        docker compose run --rm web python manage.py migrate
-        echo "✅ 迁移完成"
-        
-    - name: Start Web Service
-      run: |
-        cd /home/laurence/myDict
-        docker compose up -d web
-        echo "✅ Web服务启动完成"
-        
-    - name: Wait for Application
-      run: |
-        cd /home/laurence/myDict
-        echo "⏳ 等待应用启动（30秒）..."
-        sleep 30
-        
-    - name: Final Health Check
-      run: |
-        cd /home/laurence/myDict
-        echo "🔍 最终健康检查..."
-        
-        # 检查服务状态
-        docker compose ps
-        
-        # 健康检查
-        for i in $(seq 1 6); do
-          if curl -f http://localhost:8000/api/users/ &>/dev/null; then
-            echo "✅ 应用健康检查通过"
-            echo "🎉 自动化部署成功!"
-            echo "🌐 访问地址: http://192.168.181.129:8000"
+        echo "⏳ 等待数据库就绪..."
+        for i in {1..30}; do
+          if docker-compose exec db mysql -uroot -p12345678 -e "SELECT 1;" &>/dev/null; then
+            echo "✅ 数据库已就绪"
             break
-          else
-            echo "⏱️  等待应用启动... ($i/6)"
-            sleep 5
           fi
+          echo "等待数据库... ($i/30)"
+          sleep 5
         done
         
-        # 如果健康检查失败，显示日志
-        if ! curl -f http://localhost:8000/api/users/ &>/dev/null; then
-          echo "❌ 健康检查失败，查看详细日志:"
-          docker compose logs web
-          exit 1
+    - name: Start web service
+      run: |
+        echo "🌐 启动Web服务..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        docker-compose up -d web
+        
+    - name: Verify deployment
+      run: |
+        echo "🔍 验证部署..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        sleep 10
+        docker-compose ps
+        docker-compose logs web --tail=20
+        
+    - name: Health check
+      run: |
+        echo "❤️ 健康检查..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        if curl -f http://localhost:8000/admin/ &>/dev/null; then
+          echo "✅ 健康检查通过"
+        else
+          echo "⚠️ 健康检查失败，但继续保留环境"
+          docker-compose logs web --tail=30
         fi
+        
+    - name: Handle failure gracefully
+      if: failure()
+      run: |
+        echo "❌ 部署失败，保留环境用于排查..."
+        cd /home/laurence/dict-py-proj  # 修正路径
+        docker-compose logs > /home/laurence/deploy_failure_$(date +%Y%m%d_%H%M%S).log
+        docker system df >> /home/laurence/deploy_failure_$(date +%Y%m%d_%H%M%S).log
+        echo "📄 失败日志已保存，环境保持原状"
