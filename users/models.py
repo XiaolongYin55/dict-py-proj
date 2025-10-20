@@ -8,6 +8,8 @@ class User(models.Model):
     password = models.CharField(max_length=100)
     age = models.IntegerField()
     gender = models.CharField(max_length=10, choices=[('male', 'Male'), ('female', 'Female')])
+    phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
+
 
     def __str__(self):
         return f"{self.username} ({self.name})"
