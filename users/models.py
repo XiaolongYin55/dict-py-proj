@@ -9,6 +9,7 @@ class User(models.Model):
     age = models.IntegerField()
     gender = models.CharField(max_length=10, choices=[('male', 'Male'), ('female', 'Female')])
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    email = models.EmailField(max_length=100, default='user@gmail.com')  # 👈 新增字段
 
 
     def __str__(self):
