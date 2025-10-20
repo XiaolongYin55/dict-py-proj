@@ -11,4 +11,3 @@ class User(models.Model):
 
     def __str__(self):
         return f"{self.username} ({self.name})"
-
